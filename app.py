@@ -1,3 +1,4 @@
+from gemini_api_helper import generate_content_with_retry
 import streamlit as st
 from google import genai
 from google.genai import types

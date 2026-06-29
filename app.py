@@ -40,21 +40,31 @@ if "full_context" not in st.session_state:
     st.session_state.full_context = ""
 if "final_recommendations" not in st.session_state:
     st.session_state.final_recommendations = ""
+if "custom_api_key" not in st.session_state:
+    st.session_state.custom_api_key = ""
 
 # =====================================================================
-# 3. SECURE BACKEND API INITIALIZATION (STREAMLIT SECRETS)
+# 3. DYNAMIC API CLIENT INITIALIZATION
 # =====================================================================
-# Verify that the secret key exists in the cloud settings
-if "GEMINI_API_KEY" not in st.secrets:
-    st.error("❌ API Key Missing! Please add 'GEMINI_API_KEY' to your Streamlit Advanced Settings / Secrets.")
-    st.stop()
-
-# Seamless background connection to Google Gemini 
-try:
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-except Exception as e:
-    st.error(f"Failed to initialize Gemini Client: {str(e)}")
-    st.stop()
+def get_gemini_client():
+    """Returns a GenAI client initialized with either the user's key or the global key."""
+    # Check user custom key override first
+    if st.session_state.custom_api_key.strip():
+        try:
+            return genai.Client(api_key=st.session_state.custom_api_key.strip())
+        except Exception as e:
+            st.sidebar.error(f"Invalid custom API key: {str(e)}")
+            return None
+            
+    # Fallback to Streamlit Secrets global key
+    if "GEMINI_API_KEY" in st.secrets and st.secrets["GEMINI_API_KEY"].strip():
+        try:
+            return genai.Client(api_key=st.secrets["GEMINI_API_KEY"].strip())
+        except Exception as e:
+            st.sidebar.error(f"Failed to initialize global Gemini Client: {str(e)}")
+            return None
+            
+    return None
 
 # =====================================================================
 # 4. HELPER FUNCTIONS
@@ -75,6 +85,11 @@ def extract_text_from_pdf(uploaded_file):
 
 def run_orchestration_audit(user_profile_context):
     """Sends current state to LLM with robust exponential backoff handling for 429 quota errors."""
+    client = get_gemini_client()
+    if not client:
+        st.error("❌ API Key Missing! Please add a custom API key in the sidebar or verify global secrets.")
+        return None
+
     system_instruction = (
         "You are an Elite Career & University Guidance Counselor. Your goal is to review the user's "
         "CV profile and hobbies to provide a Top 3 Career Path match and Top 3 University/Major Roadmap.\n\n"
@@ -122,8 +137,8 @@ def run_orchestration_audit(user_profile_context):
                 **Technical Details:**
                 `{error_msg}`
                 
-                **Suggestions:**
-                * If this is a Shared/Free API Key, the model's total daily limit (20 requests per day) may be fully used up. Try again shortly or supply a custom API key.
+                **Suggestions & Fixes:**
+                * 👉 **Supply a Custom Key (Recommended):** To bypass this global limit immediately, generate a FREE personal API key at [Google AI Studio](https://aistudio.google.com/) and paste it into the **API Key Override** box in the sidebar on the left!
                 * If you just ran multiple requests quickly, wait 60 seconds and click **Type your response here...** again.
                 """
             )
@@ -145,9 +160,35 @@ def reset_application():
 # =====================================================================
 with st.sidebar:
     st.title("⚙️ System Status")
-    st.success("🤖 AI Brain Status: ONLINE")
-    st.caption("Powered securely via Streamlit Secrets Configuration")
     
+    # Track the active client key state
+    active_client = get_gemini_client()
+    if active_client:
+        if st.session_state.custom_api_key.strip():
+            st.success("🤖 API Key: CUSTOM (Online)")
+        else:
+            st.success("🤖 API Key: GLOBAL (Online)")
+    else:
+        st.error("🤖 AI Brain Status: OFFLINE")
+
+    # API Key Override Section
+    st.write("---")
+    st.subheader("🔑 API Key Override")
+    custom_key_val = st.text_input(
+        "Enter your custom Gemini API Key:",
+        type="password",
+        value=st.session_state.custom_api_key,
+        help="If the shared daily limit is reached, obtain a FREE key at Google AI Studio and enter it here to instantly unlock the advisor."
+    )
+    if custom_key_val != st.session_state.custom_api_key:
+        st.session_state.custom_api_key = custom_key_val
+        st.rerun()
+        
+    if st.session_state.custom_api_key.strip():
+        if st.button("🗑️ Clear Custom Key", type="secondary"):
+            st.session_state.custom_api_key = ""
+            st.rerun()
+
     st.write("---")
     st.subheader("📋 Instructions")
     st.markdown("""
@@ -168,8 +209,12 @@ st.title("🎓 AI Career & University Roadmap Advisor")
 st.write("Upload your background profile to uncover ideal jobs and university pathways engineered by AI.")
 st.write("---")
 
+# Prevent operations if no client could be resolved
+if not get_gemini_client():
+    st.warning("⚠️ **API Setup Required**: Please configure a fallback `GEMINI_API_KEY` in your Streamlit secrets or input a personal override key in the sidebar to get started.")
+
 # PHASE 1: COLLECT CORE INPUTS
-if st.session_state.app_state == "input":
+if st.session_state.app_state == "input" and get_gemini_client():
     col1, col2 = st.columns([1, 1], gap="medium")
     
     with col1:
@@ -221,7 +266,7 @@ if st.session_state.app_state == "input":
                             st.rerun()
 
 # PHASE 2: ACTIVE DYNAMIC QUESTION-LOOP CONVERSATION 
-elif st.session_state.app_state == "needs_info":
+elif st.session_state.app_state == "needs_info" and get_gemini_client():
     st.subheader("🙋‍♂️ Career Advisor Follow-up Questions")
     st.info("The AI is tailoring its recommendations, but wants a tiny bit more information to build the perfect roadmap.")
     

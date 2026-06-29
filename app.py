@@ -1,9 +1,9 @@
-
 import streamlit as st
 from google import genai
 from google.genai import types
 import pypdf
 import io
+import time  # Required for managing delay timing
 
 # =====================================================================
 # 1. PAGE CONFIGURATION & SETUP
@@ -74,7 +74,7 @@ def extract_text_from_pdf(uploaded_file):
         return None
 
 def run_orchestration_audit(user_profile_context):
-    """Sends current state to LLM to audit if extra questions are needed or if ready."""
+    """Sends current state to LLM with robust exponential backoff handling for 429 quota errors."""
     system_instruction = (
         "You are an Elite Career & University Guidance Counselor. Your goal is to review the user's "
         "CV profile and hobbies to provide a Top 3 Career Path match and Top 3 University/Major Roadmap.\n\n"
@@ -88,19 +88,47 @@ def run_orchestration_audit(user_profile_context):
         "Top 3 Recommended University Majors/Roadmaps (with reasoning)."
     )
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=user_profile_context,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.4
+    # Standard Exponential Backoff wait delays: 1s, 2s, 4s, 8s, 16s
+    delays = [1, 2, 4, 8, 16]
+    
+    for i, delay in enumerate(delays + [0]):  # 5 retry delays, then final exception on the last attempt
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=user_profile_context,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.4
+                )
             )
-        )
-        return response.text
-    except Exception as e:
-        st.error(f"API Generation Error: {str(e)}")
-        return None
+            return response.text
+        except Exception as e:
+            error_msg = str(e)
+            
+            # Check if this error represents an API rate/quota limit (429 or RESOURCE_EXHAUSTED)
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                if i < len(delays):
+                    # Show a professional temporary countdown spinner instead of crashing the page
+                    with st.spinner(f"⏳ Rate limit triggered. Retrying automatically in {delay}s (Attempt {i+1}/5)..."):
+                        time.sleep(delay)
+                    continue  # Jump back to the start of the loop and try again!
+            
+            # If all retries fail or we hit a different, non-recoverable API error
+            st.error("### ⚠️ System Quota Limit Reached")
+            st.markdown(
+                f"""
+                The application encountered an API limit or configuration issue.
+                
+                **Technical Details:**
+                `{error_msg}`
+                
+                **Suggestions:**
+                * If this is a Shared/Free API Key, the model's total daily limit (20 requests per day) may be fully used up. Try again shortly or supply a custom API key.
+                * If you just ran multiple requests quickly, wait 60 seconds and click **Type your response here...** again.
+                """
+            )
+            return None
+    return None
 
 def reset_application():
     """Wipes state back to factory defaults to process a new profile."""

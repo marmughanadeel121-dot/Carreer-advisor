@@ -22,7 +22,7 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     .stTabs [data-baseweb="tab"] { font-size: 16px; font-weight: 600; }
     </style>
-""", unsafe_allowed_html=True)
+""", unsafe_allow_html=True)
 
 # =====================================================================
 # 2. INITIALIZE SESSION STATE VARIABLES

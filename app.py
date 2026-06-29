@@ -8,19 +8,20 @@ import io
 # 1. PAGE CONFIGURATION & SETUP
 # =====================================================================
 st.set_page_config(
-    page_title="AI Career & University Advisor",
+    page_title="Elite AI Career & University Advisor",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling to improve UX
+# Custom Styling to improve UX and fix layout spacing
 st.markdown("""
     <style>
-    .main .block-container { padding-top: 2rem; }
+    .main .block-container { padding-top: 1.5rem; }
     .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     .stTabs [data-baseweb="tab"] { font-size: 16px; font-weight: 600; }
+    div[data-testid="stExpander"] { border-radius: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -43,12 +44,10 @@ if "final_recommendations" not in st.session_state:
 # =====================================================================
 # 3. SECURE BACKEND API INITIALIZATION (STREAMLIT SECRETS)
 # =====================================================================
-# Verify that the secret key exists in the cloud settings
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("❌ API Key Missing! Please add 'GEMINI_API_KEY' to your Streamlit Advanced Settings / Secrets.")
     st.stop()
 
-# Seamless background connection to Google Gemini 
 try:
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 except Exception as e:
@@ -79,12 +78,14 @@ def run_orchestration_audit(user_profile_context):
         "CV profile and hobbies to provide a Top 3 Career Path match and Top 3 University/Major Roadmap.\n\n"
         "CRITICAL PROCESS RULE:\n"
         "Evaluate the details provided. If vital contextual constraints like preferred geographic study region, "
-        "approximate budget limits, or current high school grades/qualifications are completely missing, you MUST "
+        "approximate budget limits, or current grades/qualifications are completely missing, you MUST "
         "ask a clarifying question. If you require more data, reply with exactly '[NEEDS_INFO]' followed by "
         "EXACTLY ONE clear, friendly conversational question. Do not output multiple questions.\n\n"
         "If you have sufficient data to make concrete accurate matching paths, reply with '[READY]' followed by "
-        "a beautifully structured markdown analysis containing: 1) Top 3 Job Paths (with descriptions), and 2) "
-        "Top 3 Recommended University Majors/Roadmaps (with reasoning)."
+        "a beautifully structured markdown analysis containing:\n"
+        "1) 🌟 Executive Summary\n"
+        "2) 📊 Top 3 Tailored Job Paths (with short descriptions and potential salary outlooks)\n"
+        "3) 🗺️ Top 3 Recommended University Majors & Roadmap paths."
     )
 
     try:
@@ -115,9 +116,9 @@ def reset_application():
 # 5. USER INTERFACE LAYOUT (SIDEBAR)
 # =====================================================================
 with st.sidebar:
-    st.title("⚙️ System Status")
-    st.success("🤖 AI Brain Status: ONLINE")
-    st.caption("Powered securely via Streamlit Secrets Configuration")
+    st.title("⚙️ Advisor Dashboard")
+    st.success("🤖 AI Engine: ONLINE")
+    st.caption("Connected securely via Streamlit Cloud Environment Keys")
     
     st.write("---")
     st.subheader("📋 Instructions")
@@ -129,14 +130,21 @@ with st.sidebar:
     """)
     
     st.write("---")
-    if st.button("🔄 Reset & Clear Data", type="secondary"):
+    st.subheader("💡 Sandbox Toolkit")
+    # Interactive Demo Loader for premium testing presentation
+    if st.button("✨ Load Test Demo Profile", type="secondary"):
+        st.session_state.hobbies = "I love building mechanical setups, programming basic Python scripts, gaming, and organizing school group projects."
+        st.session_state.cv_text = "Name: Alex Smith\nEducation: International High School Student\nGrades: Straight A marks in Math, Physics, and Computer Science.\nProjects: Designed a custom web-app scraper tool; Leader of Robotics Club."
+        st.toast("Demo data loaded! Click 'Generate My Custom Roadmap' below.", icon="🚀")
+    
+    if st.button("🔄 Reset & Clear System", type="secondary"):
         reset_application()
 
 # =====================================================================
 # 6. MAIN PANEL VIEW LOGIC
 # =====================================================================
 st.title("🎓 AI Career & University Roadmap Advisor")
-st.write("Upload your background profile to uncover ideal jobs and university pathways engineered by AI.")
+st.write("Upload your background profile to uncover ideal jobs and university pathways engineered by advanced machine learning.")
 st.write("---")
 
 # PHASE 1: COLLECT CORE INPUTS
@@ -147,92 +155,101 @@ if st.session_state.app_state == "input":
         st.subheader("🎨 Personal Background")
         hobbies_input = st.text_area(
             "What are your core hobbies, passions, or subjects you naturally enjoy?",
+            value=st.session_state.hobbies,
             placeholder="Example: I love building remote control cars, writing short stories, video editing, and math...",
-            height=150
+            height=160
         )
         
     with col2:
         st.subheader("📄 Professional/Academic Profile")
         uploaded_cv = st.file_uploader("Upload your CV / Academic Record (PDF format only)", type=["pdf"])
+        
+        # Display alternative text status if the user loaded the visual sandboxed demo profile
+        if not uploaded_cv and st.session_state.cv_text:
+            st.info("✅ Demo Academic Record loaded via sandbox panel.")
 
-    st.write("---")
+    st.write("###")
     if st.button("🚀 Generate My Custom Roadmap", type="primary"):
         if not hobbies_input.strip():
             st.warning("⚠️ Please provide a few sentences describing your interests or hobbies first.")
-        elif not uploaded_cv:
+        elif not uploaded_cv and not st.session_state.cv_text:
             st.warning("⚠️ Please upload your CV/Resume PDF to evaluate your educational background.")
         else:
-            with st.spinner("Extracting profile data and calculating roadmaps..."):
-                extracted_text = extract_text_from_pdf(uploaded_cv)
-                if extracted_text:
-                    st.session_state.cv_text = extracted_text
-                    st.session_state.hobbies = hobbies_input
-                    
-                    # Create baseline comprehensive context
-                    initial_context = (
-                        f"### USER DATA PROFILE ###\n"
-                        f"USER HOBBIES AND PASSIONS:\n{st.session_state.hobbies}\n\n"
-                        f"USER EXTRACTED CV PROFILE TEXT:\n{st.session_state.cv_text}\n\n"
-                        f"### CONVERSATION FLOW HISTORY ###\n"
-                    )
-                    st.session_state.full_context = initial_context
-                    
-                    # Evaluate profile complete sufficiency via AI Audit
-                    audit_result = run_orchestration_audit(st.session_state.full_context)
-                    
-                    if audit_result:
-                        if "[NEEDS_INFO]" in audit_result:
-                            clean_question = audit_result.replace("[NEEDS_INFO]", "").strip()
-                            st.session_state.chat_history.append({"role": "assistant", "content": clean_question})
-                            st.session_state.app_state = "needs_info"
-                            st.rerun()
-                        elif "[READY]" in audit_result:
-                            st.session_state.final_recommendations = audit_result.replace("[READY]", "").strip()
-                            st.session_state.app_state = "ready"
-                            st.rerun()
+            with st.spinner("Extracting profile insights and compiling neural roadmaps..."):
+                # If a new physical file was added, extract it. Otherwise use the demo text
+                if uploaded_cv:
+                    extracted_text = extract_text_from_pdf(uploaded_cv)
+                    if extracted_text:
+                        st.session_state.cv_text = extracted_text
+                
+                st.session_state.hobbies = hobbies_input
+                
+                # Formulate structural audit history text block
+                initial_context = (
+                    f"### USER DATA PROFILE ###\n"
+                    f"USER HOBBIES AND PASSIONS:\n{st.session_state.hobbies}\n\n"
+                    f"USER EXTRACTED CV PROFILE TEXT:\n{st.session_state.cv_text}\n\n"
+                    f"### CONVERSATION FLOW HISTORY ###\n"
+                )
+                st.session_state.full_context = initial_context
+                
+                # Evaluate input profile context data via Audit Block
+                audit_result = run_orchestration_audit(st.session_state.full_context)
+                
+                if audit_result:
+                    if "[NEEDS_INFO]" in audit_result:
+                        clean_question = audit_result.replace("[NEEDS_INFO]", "").strip()
+                        st.session_state.chat_history.append({"role": "assistant", "content": clean_question})
+                        st.session_state.app_state = "needs_info"
+                        st.rerun()
+                    elif "[READY]" in audit_result:
+                        st.session_state.final_recommendations = audit_result.replace("[READY]", "").strip()
+                        st.session_state.app_state = "ready"
+                        st.rerun()
 
 # PHASE 2: ACTIVE DYNAMIC QUESTION-LOOP CONVERSATION 
 elif st.session_state.app_state == "needs_info":
-    st.subheader("🙋‍♂️ Career Advisor Follow-up Questions")
-    st.info("The AI is tailoring its recommendations, but wants a tiny bit more information to build the perfect roadmap.")
+    st.subheader("🙋‍♂️ Career Advisor Follow-up Consultation")
+    st.markdown("To provide an exceptionally accurate pathway, please clarify this final parameter for the advisor:")
     
-    # Render historical back-and-forth log layout
+    # Render interactive chat panel layout
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
-    # Chat Input processing loop
-    if user_reply := st.chat_input("Type your response here..."):
-        with st.chat_message("user"):
-            st.write(user_reply)
+    # Chat input parsing engine
+    if user_reply := st.chat_input("Provide your answer here..."):
         
-        st.session_state.chat_history.append({"role": "user", "content": user_reply})
-        
-        # Feed the answers directly back into the working backend context log
-        st.session_state.full_context += f"\nAdvisor Question: {st.session_state.chat_history[-2]['content']}\nUser Answer: {user_reply}\n"
-        
-        with st.spinner("Analyzing answers..."):
-            audit_result = run_orchestration_audit(st.session_state.full_context)
-            if audit_result:
-                if "[NEEDS_INFO]" in audit_result:
-                    clean_question = audit_result.replace("[NEEDS_INFO]", "").strip()
-                    st.session_state.chat_history.append({"role": "assistant", "content": clean_question})
-                    st.rerun()
-                elif "[READY]" in audit_result:
-                    st.session_state.final_recommendations = audit_result.replace("[READY]", "").strip()
-                    st.session_state.app_state = "ready"
-                    st.rerun()
+        # QUALITY CONTROL ACCURACY FILTER (Gibberish Guard)
+        if len(user_reply.strip()) < 8:
+            st.warning("⚠️ Your response is a bit too short! Please provide a descriptive answer so the AI can compute an accurate match.")
+        else:
+            with st.chat_message("user"):
+                st.write(user_reply)
+            
+            st.session_state.chat_history.append({"role": "user", "content": user_reply})
+            st.session_state.full_context += f"\nAdvisor Question: {st.session_state.chat_history[-2]['content']}\nUser Answer: {user_reply}\n"
+            
+            with st.spinner("Processing context updates and calculating predictions..."):
+                audit_result = run_orchestration_audit(st.session_state.full_context)
+                if audit_result:
+                    if "[NEEDS_INFO]" in audit_result:
+                        clean_question = audit_result.replace("[NEEDS_INFO]", "").strip()
+                        st.session_state.chat_history.append({"role": "assistant", "content": clean_question})
+                        st.rerun()
+                    elif "[READY]" in audit_result:
+                        st.session_state.final_recommendations = audit_result.replace("[READY]", "").strip()
+                        st.session_state.app_state = "ready"
+                        st.rerun()
 
-# PHASE 3: COMPILE FINAL RESULTS DATA
+# PHASE 3: COMPILE FINAL ADVISORY RESULTS
 elif st.session_state.app_state == "ready":
-    st.balloons()
-    st.success("🎯 Your Personalized Roadmap is Complete!")
+    st.balloons()  # Premium celebration UX trigger effect!
+    st.success("🎯 Analysis Complete! Your Personalized Academic & Career Roadmap is Ready.")
     
-    # Split layout options dynamically into clean visual tabs
-    tab1, tab2 = st.columns([1, 1])
-    
-    st.write(st.session_state.final_recommendations)
+    # Display beautifully structured markdown report content 
+    st.markdown(st.session_state.final_recommendations)
     
     st.write("---")
-    if st.button("🆕 Analyze New Profile Roadmap", type="secondary"):
+    if st.button("🆕 Analyze a New Profile Pathways Setup", type="secondary"):
         reset_application()
